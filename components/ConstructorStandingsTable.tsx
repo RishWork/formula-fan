@@ -1,5 +1,6 @@
 import { ConstructorStanding } from "@/lib/jolpica";
 import { getTeamColor } from "@/lib/teamColors";
+import Link from "next/link";
 
 type Props = {
   constructors: ConstructorStanding[];
@@ -26,15 +27,21 @@ export default function ConstructorStandingsTable({ constructors }: Props) {
             <div className="text-2xl font-bold tabular-nums text-white">
               {c.position}
             </div>
-            <div className="flex items-center gap-3">
-              <div
-                className="h-9 w-1.5 rounded-sm"
-                style={{ backgroundColor: teamColor }}
-              />
-              <div className="font-bold uppercase tracking-wide text-white">
-                {c.Constructor.name}
-              </div>
-            </div>
+            <Link
+             href={`/teams/${c.Constructor.constructorId}`}
+             className="group flex items-center gap-3"
+>
+            <div
+            className="h-9 w-1.5 rounded-sm"
+            style={{ backgroundColor: teamColor }}
+            />
+             <div className="font-bold uppercase tracking-wide text-white">
+               {c.Constructor.name}
+               <span className="ml-2 inline-block text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100">
+               →
+              </span>
+             </div>
+            </Link>
             <div className="text-right text-lg font-bold tabular-nums text-white">
               {c.points}
             </div>

@@ -169,3 +169,99 @@ export async function getSeasonSchedule(): Promise<Race[]> {
   const data = await res.json();
   return data.MRData.RaceTable.Races ?? [];
 }
+
+// A full race result row (includes driver, constructor, fastest lap).
+// Distinct from RaceResult, which is the trimmed version used in driver detail.
+export type FullRaceResult = {
+  number: string;
+  position: string;
+  points: string;
+  Driver: {
+    driverId: string;
+    permanentNumber: string;
+    givenName: string;
+    familyName: string;
+    code: string;
+    nationality: string;
+  };
+  Constructor: {
+    constructorId: string;
+    name: string;
+  };
+  grid: string;
+  laps: string;
+  status: string;
+  Time?: { time: string };
+  FastestLap?: {
+    rank: string;
+    lap: string;
+    Time: { time: string };
+    AverageSpeed?: { units: string; speed: string };
+  };
+};
+
+export type FullRaceResults = {
+  season: string;
+  round: string;
+  raceName: string;
+  date: string;
+  time?: string;
+  Circuit: {
+    circuitId: string;
+    circuitName: string;
+    Location: {
+      lat: string;
+      long: string;
+      locality: string;
+      country: string;
+    };
+  };
+  Results: FullRaceResult[];
+};
+
+export async function getLastRace(): Promise<FullRaceResults | null> {
+  const res = await fetch(`${BASE_URL}/current/last/results.json`, {
+    next: { revalidate: 1800 },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.MRData.RaceTable.Races[0] ?? null;
+}
+
+export async function getRaceResults(
+  round: string
+): Promise<FullRaceResults | null> {
+  const res = await fetch(`${BASE_URL}/current/${round}/results.json`, {
+    next: { revalidate: 3600 },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.MRData.RaceTable.Races[0] ?? null;
+}
+
+export async function getConstructorSeason(constructorId: string): Promise<{
+  standing: ConstructorStanding;
+  races: FullRaceResults[];
+} | null> {
+  const [standingRes, resultsRes] = await Promise.all([
+    fetch(
+      `${BASE_URL}/current/constructors/${constructorId}/constructorstandings.json`,
+      { next: { revalidate: 3600 } }
+    ),
+    fetch(`${BASE_URL}/current/constructors/${constructorId}/results.json`, {
+      next: { revalidate: 3600 },
+    }),
+  ]);
+  if (!standingRes.ok || !resultsRes.ok) return null;
+
+  const standingData = await standingRes.json();
+  const resultsData = await resultsRes.json();
+
+  const standing =
+    standingData.MRData.StandingsTable.StandingsLists[0]
+      ?.ConstructorStandings?.[0];
+  const races = resultsData.MRData.RaceTable.Races ?? [];
+
+  if (!standing) return null;
+  return { standing, races };
+}

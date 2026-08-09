@@ -1,13 +1,15 @@
 import Link from "next/link";
-import { getDriverStandings, getNextRace } from "@/lib/jolpica";
+import { getDriverStandings, getNextRace, getLastRace } from "@/lib/jolpica";
 import { getTeamColor } from "@/lib/teamColors";
 import NextRaceCard from "@/components/NextRaceCard";
+import LastRaceCard from "@/components/LastRaceCard";
 
 export default async function Home() {
-  const [standings, nextRace] = await Promise.all([
-    getDriverStandings(),
-    getNextRace(),
-  ]);
+  const [standings, nextRace, lastRace] = await Promise.all([
+  getDriverStandings(),
+  getNextRace(),
+  getLastRace(),
+]);
 
   const top3 = standings.slice(0, 3);
 
@@ -41,6 +43,9 @@ export default async function Home() {
 
         {/* Next race */}
         {nextRace && <NextRaceCard race={nextRace} />}
+
+        {/* Last race */}
+        {lastRace && <LastRaceCard race={lastRace} />}
 
         {/* Championship leaders (top 3) */}
         <section>

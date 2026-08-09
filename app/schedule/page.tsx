@@ -1,11 +1,10 @@
+import Link from "next/link";
 import { getSeasonSchedule } from "@/lib/jolpica";
 
 export default async function SchedulePage() {
   const races = await getSeasonSchedule();
   const now = new Date();
 
-  // Find the index of the next upcoming race in the array.
-  // -1 means the season is over (all races in the past).
   const nextRaceIndex = races.findIndex((r) => {
     const raceDate = new Date(`${r.date}T${r.time || "00:00:00Z"}`);
     return raceDate >= now;
@@ -14,7 +13,6 @@ export default async function SchedulePage() {
   return (
     <main className="min-h-screen px-6 py-12">
       <div className="mx-auto max-w-5xl">
-        {/* Header */}
         <header className="mb-10">
           <div className="mb-3 font-mono text-xs uppercase tracking-[0.3em] text-zinc-500">
             2026 Season
@@ -28,9 +26,7 @@ export default async function SchedulePage() {
           </p>
         </header>
 
-        {/* Schedule table */}
         <div className="overflow-hidden rounded-lg border border-zinc-800 bg-[#14141a] shadow-2xl shadow-black/50">
-          {/* Column headers */}
           <div className="grid grid-cols-[56px_1fr_200px_100px_100px] gap-4 border-b border-zinc-800 px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-500">
             <div>Rd</div>
             <div>Grand Prix</div>
@@ -39,10 +35,8 @@ export default async function SchedulePage() {
             <div className="text-right">Status</div>
           </div>
 
-          {/* Rows */}
           {races.map((race, index) => {
-            const isPast =
-              nextRaceIndex === -1 || index < nextRaceIndex;
+            const isPast = nextRaceIndex === -1 || index < nextRaceIndex;
             const isNext = index === nextRaceIndex;
             const isSprint = !!race.Sprint;
             const raceDate = new Date(
@@ -53,20 +47,18 @@ export default async function SchedulePage() {
               day: "numeric",
             });
 
-            return (
-              <div
-                key={race.round}
-                className={`grid grid-cols-[56px_1fr_200px_100px_100px] items-center gap-4 border-b border-zinc-800/60 px-5 py-4 transition-colors last:border-b-0 ${
-                  isPast ? "opacity-40" : ""
-                } ${isNext ? "bg-red-500/5" : ""}`}
-                style={
-                  isNext ? { borderLeft: `3px solid #e10600` } : undefined
-                }
-              >
+            const rowClasses = `grid grid-cols-[56px_1fr_200px_100px_100px] items-center gap-4 border-b border-zinc-800/60 px-5 py-4 transition-colors last:border-b-0 ${
+              isPast ? "opacity-40 hover:opacity-70 hover:bg-zinc-900/40" : ""
+            } ${isNext ? "bg-red-500/5" : ""}`;
+            const rowStyle = isNext
+              ? { borderLeft: `3px solid #e10600` }
+              : undefined;
+
+            const rowContent = (
+              <>
                 <div className="text-xl font-bold tabular-nums text-white">
                   {race.round}
                 </div>
-
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-bold uppercase tracking-wide text-white">
@@ -82,15 +74,12 @@ export default async function SchedulePage() {
                     {race.Circuit.Location.country}
                   </div>
                 </div>
-
                 <div className="truncate text-sm text-zinc-400">
                   {race.Circuit.circuitName}
                 </div>
-
                 <div className="font-mono text-sm tabular-nums text-zinc-300">
                   {dateFormatted}
                 </div>
-
                 <div className="text-right">
                   {isPast && (
                     <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
@@ -108,6 +97,22 @@ export default async function SchedulePage() {
                     </span>
                   )}
                 </div>
+              </>
+            );
+
+            // Past races link to their result page. Upcoming races don't.
+            return isPast ? (
+              <Link
+                key={race.round}
+                href={`/races/${race.round}`}
+                className={rowClasses}
+                style={rowStyle}
+              >
+                {rowContent}
+              </Link>
+            ) : (
+              <div key={race.round} className={rowClasses} style={rowStyle}>
+                {rowContent}
               </div>
             );
           })}

@@ -1,11 +1,7 @@
 ---
 title: "Formula Fan — Project Log"
-author: "Rish"
+author: "Rishabh"
 date: "August 2026"
-geometry: margin=1in
-fontsize: 11pt
-mainfont: "Helvetica"
-monofont: "Menlo"
 colorlinks: true
 linkcolor: "red"
 ---
