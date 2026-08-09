@@ -158,3 +158,14 @@ export async function getDriverSeason(driverId: string): Promise<{
 
   return { standing, races };
 }
+
+export async function getSeasonSchedule(): Promise<Race[]> {
+  const res = await fetch(`${BASE_URL}/current.json`, {
+    next: { revalidate: 3600 },
+  });
+  if (!res.ok) {
+    throw new Error(`Jolpica returned ${res.status}`);
+  }
+  const data = await res.json();
+  return data.MRData.RaceTable.Races ?? [];
+}
