@@ -1,7 +1,11 @@
 ---
 title: "Formula Fan — Project Log"
-author: "Rishabh"
+author: "Rish"
 date: "August 2026"
+geometry: margin=1in
+fontsize: 11pt
+mainfont: "Helvetica"
+monofont: "Menlo"
 colorlinks: true
 linkcolor: "red"
 ---
@@ -296,6 +300,142 @@ Each of these is captured in the debugging journal below with the specific fix a
 
 ---
 
+### Session 8 — GitHub repo + Vercel deployment
+
+**Date:** August 9, 2026
+
+**Done:**
+
+- Installed GitHub CLI (`brew install gh`)
+- Configured git identity (`user.name`, `user.email`)
+- Confirmed `create-next-app` had already initialized the local git repo (no need for `git init`)
+- Made first meaningful commit with all sessions of work (12 files new/modified) — dashboard, standings, driver detail, next race card, all components, both lib files, project log
+- Authenticated with GitHub via `gh auth login` (browser-based flow)
+- Created public GitHub repo `RishWork/formula-fan` via `gh repo create --public --source=. --push` — one command creates the remote and pushes in one shot
+- Housekeeping: removed unused AI-tool config files (`AGENTS.md`, `CLAUDE.md`), renamed the framework-generated `README.md` to `INFO.md` (keeping `PROJECT_LOG.md` as the primary doc), caught and unstaged a stray `.Rhistory` file that shouldn't have been in the project, updated `.gitignore` to cover it and similar OS/IDE artifacts
+- Signed up for Vercel with "Continue with GitHub" — no separate account or credentials needed
+- Imported the `formula-fan` repo into Vercel — auto-detected as Next.js, defaults were all correct
+- First production deploy in ~60 seconds → live URL `formula-fan-iota.vercel.app`
+- Verified home, `/standings`, and `/drivers/[id]` all render correctly in production with live Jolpica data
+
+**Concepts introduced:**
+
+- **Version control fundamentals** — `git init` (already done by create-next-app), `git add`, `git status`, `git commit -m`, `git push`
+- **`.gitignore`** — why `node_modules/` and `.next/` never belong in the repo, and how OS/IDE artifacts (`.DS_Store`, `.Rhistory`, `.vscode/`) sneak in without a good ignore file
+- **GitHub CLI (`gh`)** — hugely simpler than the traditional dance of Personal Access Tokens or SSH keys. Handles auth via browser, wraps common workflows in single commands
+- **`gh repo create --source=. --push`** — creates a remote repo AND pushes local commits in one command, saves the manual `git remote add origin ...` step
+- **Continuous deployment via Vercel** — every `git push origin main` automatically triggers a fresh build and deploy. No manual deploy step ever again
+- **The three-command development loop** going forward:
+    ```
+    git add .
+    git commit -m "Description of change"
+    git push
+    ```
+
+**Debugging notes:**
+
+- Initial `git status` returned "fatal: not a git repository" — cause was running the command from the parent folder (`FormulaOne/`) instead of the project folder (`formulafan/`). Fix: `cd formulafan` first.
+- `.Rhistory` (an RStudio artifact) appeared as untracked. Caught before commit. Fix: unstage with `git restore --staged`, add pattern to `.gitignore`, use a comprehensive template from gitignore.io going forward.
+- Lesson: always `git status` before committing. Blind `git add .` invites OS/editor artifacts into your public repo.
+
+**Files touched:**
+
+- Deleted `AGENTS.md`, `CLAUDE.md`
+- Renamed `README.md` → `INFO.md`
+- Modified `.gitignore` (added `.Rhistory`, expanded for macOS/Node/VS Code coverage)
+- Created GitHub repo `RishWork/formula-fan`
+- Created Vercel project connected to that repo
+
+---
+
+### Session 9 — Schedule page
+
+**Date:** August 9, 2026
+
+**Done:**
+
+- Added a `getSeasonSchedule()` function to `lib/jolpica.ts` that hits `/current.json` and returns all 24 races of the current season. Reused the existing `Race` type — same shape as the next-race response
+- Extended `components/Nav.tsx` with a Schedule link between Home and Standings (one-line change; active-state highlighting worked automatically because `usePathname()` handles any route)
+- Created `app/schedule/page.tsx` — a full 2026 calendar with:
+    - Past races muted (40% opacity, "✓ Done" pill)
+    - Next race highlighted with F1-red left border, red-tinted background, and a "NEXT UP" pill
+    - Upcoming races at full opacity with "Upcoming" label
+    - Sprint weekend indicator on relevant rounds
+    - `findIndex` for locating the next race in the list; anything before it in the array is in the past, anything after is upcoming
+- Deployed to production via `git push` — Vercel picked up and rebuilt in ~30 seconds
+
+**Concepts introduced:**
+
+- **Feature-in-production cycle** — save → `git push` → live on the internet in under a minute. This is the payoff for setting up GitHub + Vercel first
+- **Conditional CSS classes via template literals** — `className={\`base ${cond ? "extra" : ""}\`}` for stateful styling (past vs next vs upcoming rows)
+- **Conditional inline styles** — `style={cond ? {...} : undefined}` for when we need conditional CSS properties that aren't easily expressed with Tailwind
+- **Reused everything** — no new visual concepts introduced, just applied existing design vocabulary (dark card, monospaced labels, tabular-nums, F1-red accent) to a new page
+
+**Files touched:**
+
+- Modified `lib/jolpica.ts` (added `getSeasonSchedule()`)
+- Modified `components/Nav.tsx` (added Schedule link)
+- Created `app/schedule/page.tsx`
+
+---
+
+### Session 10 — Last race card + race detail pages + team detail pages
+
+**Date:** August 9, 2026
+
+Big session; three related features shipped together. The through-line: filling in the missing detail pages so every entity (race, driver, team) has a dedicated page, and cross-linking all of them so users can navigate freely.
+
+**Done:**
+
+- Extended `lib/jolpica.ts` with:
+    - New types `FullRaceResult` (per-driver row with Driver, Constructor, and optional FastestLap) and `FullRaceResults` (race + array of full results)
+    - `getLastRace()` — hits `/current/last/results.json`, returns the most recently finished race
+    - `getRaceResults(round)` — hits `/current/{round}/results.json`, returns a specific past race
+    - `getConstructorSeason(constructorId)` — parallel fetch of a team's standing and all their season race results
+
+- Created `components/LastRaceCard.tsx` — a home-page card showing the last race's podium with medal-colored position numbers (gold/silver/bronze), team-colored driver number pills, and a fastest-lap strip at the bottom in purple (matching F1 broadcast convention). Podium rows link to driver detail pages; "Full results →" links to the new race detail page
+
+- Updated `app/page.tsx` to fetch and render the LastRaceCard between the next race and championship leaders sections. Home page is now a proper "before/after/context" dashboard: what's next → what just happened → who's leading overall
+
+- Created dynamic route `app/races/[round]/page.tsx` — race detail page with:
+    - Breadcrumb back to schedule
+    - Full race header (round, name, circuit, locality, date)
+    - Podium hero (3 cards, medal-colored position numbers, team-color top borders, click through to driver pages)
+    - Full results table with all 20+ drivers (position, driver, team, grid, time/gap, points)
+    - Fastest lap indicator in purple
+
+- Made schedule rows clickable for past races (`app/schedule/page.tsx`). Used a conditional `<Link>` / `<div>` wrapper — past races become clickable, upcoming races remain non-interactive. Also added hover state for clickable rows
+
+- Created dynamic route `app/teams/[id]/page.tsx` — constructor detail page with:
+    - Breadcrumb back to standings
+    - Hero with team color, name, nationality, and a 4-stat bar (position, points, wins, driver count)
+    - Two clickable driver cards
+    - Season results table with both drivers' results per race and combined team points per round
+
+- Made constructor names clickable in `components/ConstructorStandingsTable.tsx` — same pattern as driver names, `<Link>` wrap with hover arrow
+
+- Deployed to production with a single push
+
+**Concepts introduced:**
+
+- **Third dynamic route in the app** — `/races/[round]` now joins `/drivers/[id]` and `/teams/[id]`. The pattern is fully absorbed at this point; adding new dynamic routes is muscle memory
+- **Data reshaping in a Server Component** — the team detail page uses a `Map` to deduplicate drivers across all season races. Server Components are just async functions; any data transformation JS can do, they can do
+- **Local sub-components (redux)** — the team page defines `StatBlock` and `DriverResultCell` at the bottom of the file, unexported. When a piece is used only in one place, it lives with the place; no need for its own file
+- **Cross-linking across pages** — the app now has a genuine web of connections: schedule → race → driver, standings → team → driver, home podium → race → driver, home leaders → driver, and driver → team. Everything is navigable in multiple directions
+- **Purple as the "fastest lap" accent** — matches F1's broadcast convention. Small touch, real F1-fan-recognizable
+
+**Files touched:**
+
+- Modified `lib/jolpica.ts` (added `FullRaceResult`, `FullRaceResults` types + three new functions)
+- Created `components/LastRaceCard.tsx`
+- Modified `app/page.tsx` (imported `getLastRace` and `LastRaceCard`, rendered card between next race and championship leaders)
+- Created `app/races/[round]/page.tsx`
+- Modified `app/schedule/page.tsx` (past races are `<Link>` wrappers, upcoming stay as `<div>`)
+- Created `app/teams/[id]/page.tsx`
+- Modified `components/ConstructorStandingsTable.tsx` (constructor names now clickable, added `Link` import)
+
+---
+
 ## Data sources — current status
 
 | API | Endpoint(s) in use | Purpose | Cache |
@@ -305,6 +445,11 @@ Each of these is captured in the debugging journal below with the specific fix a
 | Jolpica-F1 | `/current/next.json` | Next race info + countdown | 30 min |
 | Jolpica-F1 | `/current/drivers/{id}/driverstandings.json` | Driver detail page — season standing | 1 hour |
 | Jolpica-F1 | `/current/drivers/{id}/results.json` | Driver detail page — race results | 1 hour |
+| Jolpica-F1 | `/current.json` | Schedule page — full season calendar | 1 hour |
+| Jolpica-F1 | `/current/last/results.json` | Last race card on home page | 30 min |
+| Jolpica-F1 | `/current/{round}/results.json` | Race detail page | 1 hour |
+| Jolpica-F1 | `/current/constructors/{id}/constructorstandings.json` | Team detail page — season standing | 1 hour |
+| Jolpica-F1 | `/current/constructors/{id}/results.json` | Team detail page — race results | 1 hour |
 
 Base URL: `https://api.jolpi.ca/ergast/f1`. All requests cached via Next.js's built-in fetch cache.
 
@@ -413,26 +558,33 @@ A running list of every bug we've hit and the lesson from each. Useful reference
 
 ## Next actions
 
-**In progress right now:**
+**Live URL:** `https://formula-fan-iota.vercel.app`
+**Repo:** `https://github.com/RishWork/formula-fan`
 
-- **GitHub repo setup** — init, first commit, push to a public repo on GitHub via the `gh` CLI. Establishes version control safety net for all future work.
-- **Vercel deployment** — connect the GitHub repo to Vercel for a live public URL. Continuous deployment (every `git push` auto-deploys) becomes standard.
+**Immediate — small polish wins:**
 
-**Immediate — next feature session:**
+- **Polished README on GitHub** — replace the auto-generated boilerplate with a proper project pitch: what it is, live URL, screenshot(s), tech stack, "how it was built" nod to PROJECT_LOG.md. Makes the repo portfolio-ready. ~15 min
+- **Race weekend "LIVE" indicator** — pulsing red dot on the next race card when a session is currently active
+- **404 page polish** — currently uses Next.js's default. Custom 404 that matches the app's aesthetic (~30 min)
 
-- Schedule page (`app/schedule/page.tsx`) — full 2026 calendar, all 24 rounds, past races muted, upcoming highlighted, next race pinned to the top. Uses `/{year}.json` from Jolpica. Reuses everything already learned; a good confidence-building session.
+**Short term — new features:**
 
-**Short term:**
-
-- Latest race result card — winner podium + fastest lap + link to full results. On home page or as a `/results/last` route
-- Constructor detail pages (`app/teams/[id]/page.tsx`) — same dynamic-route pattern as drivers, but for teams. Shows both drivers on the team + season progress
-- Individual race pages (`app/races/[round]/page.tsx`) — click a race in the schedule → see full grid, positions, points, etc. Third dynamic route
+- **Head-to-head driver comparison** — pick two drivers, compare their season side-by-side. First feature that requires real UI state (form/selection), which introduces `useState` and event handlers in a page context
+- **Historical seasons browser** (`app/seasons/[year]/page.tsx`) — travel back through F1 history. Powerful because Jolpica has data from 1950
+- **Circuit detail pages** (`app/circuits/[id]/page.tsx`) — track info, history of winners, lap records
 
 **Medium term:**
 
-- Head-to-head driver comparison — pick two drivers, compare their season side by side. First feature that requires real UI state (form/selection)
-- Historical seasons browser (`app/seasons/[year]/page.tsx`) — travel back through F1 history. Powerful because Jolpica has data from 1950
-- Race-weekend live indicator (pulsing red dot when a session is currently active)
+- **Search / driver picker** — a header search that filters drivers as you type. Real client-side interactivity
+- **Favourites** — mark drivers/teams as favourites, persist to localStorage. First real state management
+- **Loading states / skeleton screens** — Next.js `loading.tsx` files for each route
+
+**Longer term (unchanged):**
+
+- Predictions game — requires user accounts (Supabase auth) and a database
+- Telemetry pages — requires standing up a Python service using FastF1
+- Live-timing during race sessions (once we decide on OpenF1 vs the official feed)
+- Community features (favourites, comments) — needs users and moderation
 
 **Longer term (needs bigger tools):**
 
@@ -470,27 +622,40 @@ The project uses a **flat** structure (no `src/` directory). The `@/` alias reso
 ```
 formulafan/
 ├── app/
-│   ├── page.tsx                       # / — Home (trimmed dashboard, clickable top-3)
+│   ├── page.tsx                       # / — Home (next race + last race + top-3)
 │   ├── layout.tsx                     # Root layout with <Nav />
 │   ├── globals.css                    # Global styles + F1 theme + overscroll fix
+│   ├── schedule/
+│   │   └── page.tsx                   # /schedule — full season calendar
 │   ├── standings/
-│   │   └── page.tsx                   # /standings — full driver + constructor tables
-│   └── drivers/
+│   │   └── page.tsx                   # /standings — driver + constructor tables
+│   ├── drivers/
+│   │   └── [id]/
+│   │       └── page.tsx               # /drivers/<id> — driver detail (dynamic)
+│   ├── races/
+│   │   └── [round]/
+│   │       └── page.tsx               # /races/<round> — race detail (dynamic)
+│   └── teams/
 │       └── [id]/
-│           └── page.tsx               # /drivers/<id> — dynamic driver detail page
+│           └── page.tsx               # /teams/<id> — team detail (dynamic)
 ├── components/
 │   ├── Nav.tsx                        # Sticky navigation (Client Component)
 │   ├── NextRaceCard.tsx               # Next race hero (Server Component)
 │   ├── RaceCountdown.tsx              # Live countdown (Client Component)
-│   ├── DriverStandingsTable.tsx       # Driver table (reusable, Server, clickable names)
-│   └── ConstructorStandingsTable.tsx  # Constructor table (reusable, Server)
+│   ├── LastRaceCard.tsx               # Last race podium (Server Component)
+│   ├── DriverStandingsTable.tsx       # Driver table (reusable, clickable names)
+│   └── ConstructorStandingsTable.tsx  # Constructor table (reusable, clickable names)
 ├── lib/
-│   ├── jolpica.ts                     # Data fetching + types (5 exported functions)
+│   ├── jolpica.ts                     # Data fetching + types (8 exported functions)
 │   └── teamColors.ts                  # constructorId → hex color map
 ├── public/                            # Static assets
-├── .gitignore                         # Git ignores (node_modules, .next, .env*)
+├── .gitignore                         # Git ignores (node_modules, .next, .env*, macOS)
+├── INFO.md                            # Framework-generated Next.js info
 ├── package.json
 └── PROJECT_LOG.md                     # This file
 ```
 
-**Routes currently defined:** `/` (home), `/standings`, `/drivers/[id]` (matches any driver ID).
+**Routes currently defined:** `/`, `/schedule`, `/standings`, `/drivers/[id]`, `/races/[round]`, `/teams/[id]`. Six distinct page types, three of which are dynamic.
+
+**Deployed:** `https://formula-fan-iota.vercel.app` (auto-deploys on push to `main`).
+**Source:** `https://github.com/RishWork/formula-fan`

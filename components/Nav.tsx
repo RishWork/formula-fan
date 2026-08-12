@@ -7,6 +7,7 @@ const items = [
   { href: "/", label: "Home" },
   { href: "/schedule", label: "Schedule" },
   { href: "/standings", label: "Standings" },
+  { href: "/compare", label: "Compare" },
 ];
 
 export default function Nav() {
