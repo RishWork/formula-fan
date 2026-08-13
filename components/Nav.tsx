@@ -8,6 +8,7 @@ const items = [
   { href: "/schedule", label: "Schedule" },
   { href: "/standings", label: "Standings" },
   { href: "/compare", label: "Compare" },
+  { href: "/seasons", label: "Seasons" },
 ];
 
 export default function Nav() {

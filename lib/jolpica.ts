@@ -265,3 +265,54 @@ export async function getConstructorSeason(constructorId: string): Promise<{
   if (!standing) return null;
   return { standing, races };
 }
+
+export async function getSeasonsList(): Promise<string[]> {
+  // limit=100 because the default page size is 30 and there are 75+ seasons.
+  const res = await fetch(`${BASE_URL}/seasons.json?limit=100`, {
+    next: { revalidate: 86400 }, // 24h — this list changes once a year
+  });
+  if (!res.ok) throw new Error(`Jolpica returned ${res.status}`);
+  const data = await res.json();
+  return (data.MRData.SeasonTable.Seasons ?? []).map(
+    (s: { season: string }) => s.season
+  );
+}
+
+export async function getSeasonSummary(year: string): Promise<{
+  races: Race[];
+  driverStandings: DriverStanding[];
+  constructorStandings: ConstructorStanding[];
+} | null> {
+  const [racesRes, driversRes, constructorsRes] = await Promise.all([
+    fetch(`${BASE_URL}/${year}.json?limit=100`, { next: { revalidate: 86400 } }),
+    fetch(`${BASE_URL}/${year}/driverstandings.json?limit=100`, {
+      next: { revalidate: 86400 },
+    }),
+    fetch(`${BASE_URL}/${year}/constructorstandings.json?limit=100`, {
+      next: { revalidate: 86400 },
+    }),
+  ]);
+
+  if (!racesRes.ok || !driversRes.ok) return null;
+
+  const racesData = await racesRes.json();
+  const driversData = await driversRes.json();
+
+  const races = racesData.MRData.RaceTable.Races ?? [];
+  const driverStandings =
+    driversData.MRData.StandingsTable.StandingsLists[0]?.DriverStandings ?? [];
+
+  // The Constructors' Championship only started in 1958 — earlier seasons
+  // legitimately have no constructor standings. Don't treat that as an error.
+  let constructorStandings: ConstructorStanding[] = [];
+  if (constructorsRes.ok) {
+    const constructorsData = await constructorsRes.json();
+    constructorStandings =
+      constructorsData.MRData.StandingsTable.StandingsLists[0]
+        ?.ConstructorStandings ?? [];
+  }
+
+  if (races.length === 0 && driverStandings.length === 0) return null;
+
+  return { races, driverStandings, constructorStandings };
+}
