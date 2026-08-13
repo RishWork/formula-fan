@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { FullRaceResults } from "@/lib/jolpica";
 import { getTeamColor } from "@/lib/teamColors";
+import PodiumMedal from "./PodiumMedal";
+import TeamBadge from "./TeamBadge";
 
 type Props = {
   race: FullRaceResults;
 };
-
-const medalColors = ["#fbbf24", "#cbd5e1", "#c9885a"];
 
 export default function LastRaceCard({ race }: Props) {
   const podium = race.Results.slice(0, 3);
@@ -42,21 +42,17 @@ export default function LastRaceCard({ race }: Props) {
 
       {/* Podium */}
       <div>
-        {podium.map((result, idx) => {
+        {podium.map((result) => {
           const teamColor = getTeamColor(result.Constructor.constructorId);
           return (
             <Link
               key={result.Driver.driverId}
               href={`/drivers/${result.Driver.driverId}`}
-              className="grid grid-cols-[40px_1fr_140px] items-center gap-4 border-b border-zinc-800/60 px-6 py-4 transition-colors hover:bg-zinc-900/40 last:border-b-0"
+              className="grid grid-cols-[44px_1fr_140px] items-center gap-4 border-b border-zinc-800/60 px-6 py-4 transition-colors hover:bg-zinc-900/40 last:border-b-0"
               style={{ borderLeft: `3px solid ${teamColor}` }}
             >
-              <div
-                className="text-2xl font-bold tabular-nums"
-                style={{ color: medalColors[idx] }}
-              >
-                {result.position}
-              </div>
+              <PodiumMedal position={parseInt(result.position)} />
+
               <div className="flex items-center gap-3">
                 <div
                   className="flex h-9 w-11 items-center justify-center rounded text-sm font-bold italic tabular-nums text-white shadow-sm"
@@ -64,16 +60,26 @@ export default function LastRaceCard({ race }: Props) {
                 >
                   {result.Driver.permanentNumber}
                 </div>
-                <div className="text-white">
-                  <span className="font-light">{result.Driver.givenName}</span>{" "}
-                  <span className="font-bold uppercase tracking-wide">
-                    {result.Driver.familyName}
-                  </span>
-                  <div className="text-xs font-normal normal-case tracking-normal text-zinc-500">
-                    {result.Constructor.name}
+                <div className="min-w-0 text-white">
+                  <div className="truncate">
+                    <span className="font-light">{result.Driver.givenName}</span>{" "}
+                    <span className="font-bold uppercase tracking-wide">
+                      {result.Driver.familyName}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2">
+                    <TeamBadge
+                      constructorId={result.Constructor.constructorId}
+                      name={result.Constructor.name}
+                      size="sm"
+                    />
+                    <span className="truncate text-xs text-zinc-500">
+                      {result.Constructor.name}
+                    </span>
                   </div>
                 </div>
               </div>
+
               <div className="text-right font-mono text-sm tabular-nums text-zinc-300">
                 {result.Time?.time ?? "—"}
               </div>
@@ -96,6 +102,11 @@ export default function LastRaceCard({ race }: Props) {
                   {fastestLap.Driver.familyName}
                 </span>
               </span>
+              <TeamBadge
+                constructorId={fastestLap.Constructor.constructorId}
+                name={fastestLap.Constructor.name}
+                size="sm"
+              />
             </div>
             <span className="font-mono text-sm tabular-nums text-zinc-300">
               {fastestLap.FastestLap?.Time.time}
