@@ -7,6 +7,7 @@ const items = [
   { href: "/", label: "Home" },
   { href: "/schedule", label: "Schedule" },
   { href: "/standings", label: "Standings" },
+  { href: "/circuits", label: "Circuits" },
   { href: "/compare", label: "Compare" },
   { href: "/seasons", label: "Seasons" },
 ];
@@ -15,7 +16,7 @@ export default function Nav() {
   const pathname = usePathname();
 
   return (
-    <nav className="sticky top-0 z-40 border-b border-zinc-800/60 bg-[#0a0a0f]/80 backdrop-blur-md">
+    <nav className="sticky top-0 z-40 border-b border-zinc-800/60 bg-[#0a0a0f]/95 backdrop-blur-md">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
         <Link href="/" className="flex items-center gap-2.5">
           <div className="h-2 w-2 rounded-full bg-[#e10600] shadow-[0_0_8px_rgba(225,6,0,0.7)]" />

@@ -316,3 +316,170 @@ export async function getSeasonSummary(year: string): Promise<{
 
   return { races, driverStandings, constructorStandings };
 }
+
+export type Circuit = {
+  circuitId: string;
+  url: string;
+  circuitName: string;
+  Location: {
+    lat: string;
+    long: string;
+    locality: string;
+    country: string;
+  };
+};
+
+export async function getCircuitsList(): Promise<Circuit[]> {
+  const res = await fetch(`${BASE_URL}/circuits.json?limit=100`, {
+    next: { revalidate: 86400 },
+  });
+  if (!res.ok) {
+    console.error(`[getCircuitsList] returned ${res.status}`);
+    return [];
+  }
+  const data = await res.json();
+  return data.MRData.CircuitTable.Circuits ?? [];
+}
+
+export async function getCircuitWinners(
+  circuitId: string
+): Promise<FullRaceResults[] | null> {
+  const url = `${BASE_URL}/circuits/${circuitId}/results/1.json?limit=100`;
+  const res = await fetch(url, { next: { revalidate: 86400 } });
+  if (!res.ok) {
+    console.error(`[getCircuitWinners] ${url} returned ${res.status}`);
+    return null;
+  }
+  const data = await res.json();
+  const races = data.MRData.RaceTable.Races ?? [];
+  if (races.length === 0) return null;
+  return races;
+}
+
+export type LapDriver = {
+  driverId: string;
+  code: string;
+  familyName: string;
+  constructorId: string;
+  finalPosition: number;
+};
+
+export type LapRow = Record<string, number | null>;
+
+// Converts "1:25.272" to 85.272 seconds. Returns null for anything unparseable.
+function lapTimeToSeconds(time: string): number | null {
+  if (!time) return null;
+  const parts = time.split(":");
+  if (parts.length === 2) {
+    return parseInt(parts[0]) * 60 + parseFloat(parts[1]);
+  }
+  const asNumber = parseFloat(time);
+  return isNaN(asNumber) ? null : asNumber;
+}
+
+export async function getRaceLaps(
+  season: string,
+  round: string
+): Promise<{
+  positionRows: LapRow[];
+  timeRows: LapRow[];
+  drivers: LapDriver[];
+  fastestLapSeconds: number;
+} | null> {
+  const buildUrl = (limit: number, offset: number) =>
+    `${BASE_URL}/${season}/${round}/laps.json?limit=${limit}&offset=${offset}`;
+
+  const firstRes = await fetch(buildUrl(1000, 0), {
+    next: { revalidate: 86400 },
+  });
+  if (!firstRes.ok) {
+    console.error(`[getRaceLaps] first page returned ${firstRes.status}`);
+    return null;
+  }
+
+  const firstData = await firstRes.json();
+  const pageSize = parseInt(firstData.MRData.limit ?? "100");
+  const total = parseInt(firstData.MRData.total ?? "0");
+  if (total === 0) return null;
+
+  // lapNumber -> array of { driverId, position, time }
+  const lapBuckets: Record<number, LapTiming[]> = {};
+
+  function absorb(data: JolpicaLapPage) {
+    const laps = data?.MRData?.RaceTable?.Races?.[0]?.Laps ?? [];
+    for (const lap of laps) {
+      const n = parseInt(lap.number);
+      if (!lapBuckets[n]) lapBuckets[n] = [];
+      lapBuckets[n].push(...lap.Timings);
+    }
+  }
+
+  absorb(firstData);
+
+  const offsets: number[] = [];
+  for (let o = pageSize; o < total; o += pageSize) offsets.push(o);
+
+  const BATCH = 4;
+  for (let i = 0; i < offsets.length; i += BATCH) {
+    const batch = offsets.slice(i, i + BATCH);
+    const responses = await Promise.all(
+      batch.map((o) =>
+        fetch(buildUrl(pageSize, o), { next: { revalidate: 86400 } })
+      )
+    );
+    for (const res of responses) {
+      if (!res.ok) {
+        console.warn(`[getRaceLaps] a page returned ${res.status}`);
+        continue;
+      }
+      absorb(await res.json());
+    }
+  }
+
+  // Lap timings only carry driverId, so pull names and teams from the results.
+  const results = await getRaceResults(round);
+  const meta: Record<string, LapDriver> = {};
+  for (const r of results?.Results ?? []) {
+    meta[r.Driver.driverId] = {
+      driverId: r.Driver.driverId,
+      code: r.Driver.code,
+      familyName: r.Driver.familyName,
+      constructorId: r.Constructor.constructorId,
+      finalPosition: parseInt(r.position) || 99,
+    };
+  }
+
+  const lapNumbers = Object.keys(lapBuckets)
+    .map((k) => parseInt(k))
+    .sort((a, b) => a - b);
+
+  const positionRows: LapRow[] = [];
+  const timeRows: LapRow[] = [];
+  let fastest = Infinity;
+
+  for (const n of lapNumbers) {
+    const posRow: LapRow = { lap: n };
+    const timeRow: LapRow = { lap: n };
+
+    for (const t of lapBuckets[n]) {
+      posRow[t.driverId] = parseInt(t.position);
+      const secs = lapTimeToSeconds(t.time);
+      timeRow[t.driverId] = secs;
+      if (secs !== null && secs < fastest) fastest = secs;
+    }
+
+    positionRows.push(posRow);
+    timeRows.push(timeRow);
+  }
+
+  const drivers = Object.values(meta).sort(
+    (a, b) => a.finalPosition - b.finalPosition
+  );
+
+  return {
+    positionRows,
+    timeRows,
+    drivers,
+    fastestLapSeconds: fastest === Infinity ? 0 : fastest,
+  };
+}

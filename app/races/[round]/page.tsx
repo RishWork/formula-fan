@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getRaceResults } from "@/lib/jolpica";
+import { getRaceResults, getRaceLaps } from "@/lib/jolpica";
+import RaceLapChart from "@/components/RaceLapChart";
 import { getTeamColor } from "@/lib/teamColors";
 
 const medalColors = ["#fbbf24", "#cbd5e1", "#c9885a"];
@@ -12,7 +13,7 @@ export default async function RacePage({
 }) {
   const { round } = await params;
   const race = await getRaceResults(round);
-
+  const laps = race ? await getRaceLaps(race.season, round) : null;
   if (!race) {
     notFound();
   }
@@ -105,6 +106,20 @@ export default async function RacePage({
             })}
           </div>
         </section>
+
+        {laps && laps.positionRows.length > 1 && (
+          <section className="mb-10">
+            <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+              Race Analysis
+            </h2>
+            <RaceLapChart
+              positionRows={laps.positionRows}
+              timeRows={laps.timeRows}
+              drivers={laps.drivers}
+              fastestLapSeconds={laps.fastestLapSeconds}
+            />
+          </section>
+        )}
 
         {/* Full results */}
         <section>
