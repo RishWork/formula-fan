@@ -78,6 +78,7 @@ export async function getNextRace(): Promise<Race | null> {
   const data = await res.json();
   return data.MRData.RaceTable.Races[0] ?? null;
 }
+
 export type ConstructorStanding = {
   position: string;
   points: string;
@@ -89,7 +90,8 @@ export type ConstructorStanding = {
   };
 };
 
-export async function getConstructorStandings(): Promise<ConstructorStanding[]> {
+export async function getConstructorStandings(): Promise<ConstructorStanding[]>
+{
   const res = await fetch(`${BASE_URL}/current/constructorstandings.json`, {
     next: { revalidate: 3600 },
   });
@@ -150,8 +152,7 @@ export async function getDriverSeason(driverId: string): Promise<{
   const resultsData = await resultsRes.json();
 
   const standing =
-    standingData.MRData.StandingsTable.StandingsLists[0]
-      ?.DriverStandings?.[0];
+    standingData.MRData.StandingsTable.StandingsLists[0]?.DriverStandings?.[0];
   const races = resultsData.MRData.RaceTable.Races ?? [];
 
   if (!standing) return null;
@@ -206,8 +207,10 @@ export type FullRaceResults = {
   raceName: string;
   date: string;
   time?: string;
+  url?: string;
   Circuit: {
     circuitId: string;
+    url: string;
     circuitName: string;
     Location: {
       lat: string;
@@ -284,7 +287,9 @@ export async function getSeasonSummary(year: string): Promise<{
   constructorStandings: ConstructorStanding[];
 } | null> {
   const [racesRes, driversRes, constructorsRes] = await Promise.all([
-    fetch(`${BASE_URL}/${year}.json?limit=100`, { next: { revalidate: 86400 } }),
+    fetch(`${BASE_URL}/${year}.json?limit=100`, {
+      next: { revalidate: 86400 },
+    }),
     fetch(`${BASE_URL}/${year}/driverstandings.json?limit=100`, {
       next: { revalidate: 86400 },
     }),
@@ -356,6 +361,109 @@ export async function getCircuitWinners(
   return races;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Championship progression — powers the chart on /standings          */
+/* ------------------------------------------------------------------ */
+
+export type ChampionshipDriver = {
+  driverId: string;
+  familyName: string;
+  constructorId: string;
+  totalPoints: number;
+};
+
+// One row per round. Always carries `round` and `raceName`; the remaining keys
+// are driverIds mapped to that driver's cumulative points after the round.
+export type ProgressionRow = Record<string, number | string>;
+
+export async function getChampionshipProgression(topN = 5): Promise<{
+  rows: ProgressionRow[];
+  drivers: ChampionshipDriver[];
+} | null> {
+  const [raceRes, sprintRes] = await Promise.all([
+    fetch(`${BASE_URL}/current/results.json?limit=1000`, {
+      next: { revalidate: 3600 },
+    }),
+    fetch(`${BASE_URL}/current/sprint.json?limit=1000`, {
+      next: { revalidate: 3600 },
+    }),
+  ]);
+
+  if (!raceRes.ok) {
+    console.error(`[getChampionshipProgression] results: ${raceRes.status}`);
+    return null;
+  }
+
+  const raceData = await raceRes.json();
+  const races = raceData.MRData.RaceTable.Races ?? [];
+  if (races.length === 0) return null;
+
+  // Sprint points count toward the championship. If that endpoint fails we
+  // still render, but totals would drift from official standings — so warn.
+  const sprintByRound: Record<string, Record<string, number>> = {};
+  if (sprintRes.ok) {
+    const sprintData = await sprintRes.json();
+    for (const s of sprintData.MRData.RaceTable.Races ?? []) {
+      const perDriver: Record<string, number> = {};
+      for (const r of s.SprintResults ?? []) {
+        perDriver[r.Driver.driverId] = parseFloat(r.points ?? "0");
+      }
+      sprintByRound[s.round] = perDriver;
+    }
+  } else {
+    console.warn(
+      `[getChampionshipProgression] sprint: ${sprintRes.status} — totals exclude sprint points`
+    );
+  }
+
+  const running: Record<string, number> = {};
+  const meta: Record<string, { familyName: string; constructorId: string }> = {};
+  const rows: ProgressionRow[] = [];
+
+  const ordered = [...races].sort(
+    (a, b) => parseInt(a.round) - parseInt(b.round)
+  );
+
+  for (const race of ordered) {
+    const sprintPts = sprintByRound[race.round] ?? {};
+
+    for (const result of race.Results ?? []) {
+      const id = result.Driver.driverId;
+      const racePts = parseFloat(result.points ?? "0");
+      running[id] = (running[id] ?? 0) + racePts + (sprintPts[id] ?? 0);
+      meta[id] = {
+        familyName: result.Driver.familyName,
+        constructorId: result.Constructor.constructorId,
+      };
+    }
+
+    const row: ProgressionRow = {
+      round: parseInt(race.round),
+      raceName: race.raceName,
+    };
+    for (const id of Object.keys(running)) {
+      row[id] = running[id];
+    }
+    rows.push(row);
+  }
+
+  const drivers = Object.keys(meta)
+    .map((driverId) => ({
+      driverId,
+      familyName: meta[driverId].familyName,
+      constructorId: meta[driverId].constructorId,
+      totalPoints: running[driverId] ?? 0,
+    }))
+    .sort((a, b) => b.totalPoints - a.totalPoints)
+    .slice(0, topN);
+
+  return { rows, drivers };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Lap-by-lap data — powers the race analysis chart                   */
+/* ------------------------------------------------------------------ */
+
 export type LapDriver = {
   driverId: string;
   code: string;
@@ -365,6 +473,20 @@ export type LapDriver = {
 };
 
 export type LapRow = Record<string, number | null>;
+
+type LapTiming = { driverId: string; position: string; time: string };
+
+type JolpicaLapPage = {
+  MRData: {
+    limit?: string;
+    total?: string;
+    RaceTable: {
+      Races?: Array<{
+        Laps?: Array<{ number: string; Timings: LapTiming[] }>;
+      }>;
+    };
+  };
+};
 
 // Converts "1:25.272" to 85.272 seconds. Returns null for anything unparseable.
 function lapTimeToSeconds(time: string): number | null {
@@ -389,6 +511,8 @@ export async function getRaceLaps(
   const buildUrl = (limit: number, offset: number) =>
     `${BASE_URL}/${season}/${round}/laps.json?limit=${limit}&offset=${offset}`;
 
+  // The first page reports the server's real page size and total row count,
+  // so we can paginate without hardcoding assumptions.
   const firstRes = await fetch(buildUrl(1000, 0), {
     next: { revalidate: 86400 },
   });
@@ -397,7 +521,7 @@ export async function getRaceLaps(
     return null;
   }
 
-  const firstData = await firstRes.json();
+  const firstData: JolpicaLapPage = await firstRes.json();
   const pageSize = parseInt(firstData.MRData.limit ?? "100");
   const total = parseInt(firstData.MRData.total ?? "0");
   if (total === 0) return null;
@@ -419,6 +543,8 @@ export async function getRaceLaps(
   const offsets: number[] = [];
   for (let o = pageSize; o < total; o += pageSize) offsets.push(o);
 
+  // Small parallel batches rather than all at once — polite to a
+  // community-run API.
   const BATCH = 4;
   for (let i = 0; i < offsets.length; i += BATCH) {
     const batch = offsets.slice(i, i + BATCH);

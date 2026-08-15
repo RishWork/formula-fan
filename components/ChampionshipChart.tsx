@@ -10,7 +10,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  TooltipProps,
 } from "recharts";
 import { ChampionshipDriver, ProgressionRow } from "@/lib/jolpica";
 import { getTeamColor } from "@/lib/teamColors";
@@ -20,25 +19,38 @@ type Props = {
   drivers: ChampionshipDriver[];
 };
 
+type TooltipEntry = {
+  dataKey?: string | number;
+  name?: string;
+  value?: number | string;
+  color?: string;
+  payload?: Record<string, unknown>;
+};
+
+type ChartTooltipProps = {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  label?: string | number;
+};
+
+type SeriesItem = ChampionshipDriver & { color: string; dashed: boolean };
+
 export default function ChampionshipChart({ rows, drivers }: Props) {
   const [focused, setFocused] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [hasAnimated, setHasAnimated] = useState(false);
 
-  // Let the draw-in animation run once, then disable it so hover/focus state
-  // changes don't re-trigger it on every interaction.
+  // Let the draw-in run once, then disable it so hover state changes don't
+  // re-trigger the animation on every interaction.
   useEffect(() => {
     const timer = setTimeout(() => setHasAnimated(true), 1600);
     return () => clearTimeout(timer);
   }, []);
 
-  // Hover is a temporary preview; focus is a locked selection.
   const active = hovered ?? focused;
 
-  // Team-mates share a colour, so the second driver from a team gets a dashed
-  // line to stay distinguishable.
   const seenTeams = new Set<string>();
-  const series = drivers.map((d) => {
+  const series: SeriesItem[] = drivers.map((d) => {
     const isSecond = seenTeams.has(d.constructorId);
     seenTeams.add(d.constructorId);
     return {
@@ -57,7 +69,6 @@ export default function ChampionshipChart({ rows, drivers }: Props) {
 
   return (
     <div className="overflow-hidden rounded-lg border border-zinc-800 bg-[#14141a] shadow-2xl shadow-black/50">
-      {/* Interactive legend */}
       <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 px-5 py-4">
         {series.map((s) => {
           const isActive = active === s.driverId;
@@ -115,7 +126,6 @@ export default function ChampionshipChart({ rows, drivers }: Props) {
         )}
       </div>
 
-      {/* Chart */}
       <div className="h-[400px] w-full px-2 py-5">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
@@ -175,7 +185,7 @@ export default function ChampionshipChart({ rows, drivers }: Props) {
             />
 
             <Tooltip
-              content={<DarkTooltip series={series} active_id={active} />}
+              content={<DarkTooltip series={series} activeId={active} />}
               cursor={{
                 stroke: "#e10600",
                 strokeWidth: 1,
@@ -183,7 +193,6 @@ export default function ChampionshipChart({ rows, drivers }: Props) {
               }}
             />
 
-            {/* Gradient area under the active line — rendered first so it sits behind */}
             {activeSeries && (
               <Area
                 type="monotone"
@@ -195,7 +204,6 @@ export default function ChampionshipChart({ rows, drivers }: Props) {
               />
             )}
 
-            {/* Glow bloom: a fat, translucent stroke beneath the crisp line */}
             {activeSeries && (
               <Line
                 type="monotone"
@@ -211,7 +219,6 @@ export default function ChampionshipChart({ rows, drivers }: Props) {
               />
             )}
 
-            {/* The actual driver lines */}
             {series.map((s) => (
               <Line
                 key={s.driverId}
@@ -226,8 +233,7 @@ export default function ChampionshipChart({ rows, drivers }: Props) {
                 dot={false}
                 activeDot={{
                   r: active === s.driverId ? 6 : 4,
-                  strokeWidth: 2,
-                  stroke: "#0a0a0f",
+                  strokeWidth: 0,
                   fill: s.color,
                 }}
                 isAnimationActive={!hasAnimated}
@@ -239,7 +245,6 @@ export default function ChampionshipChart({ rows, drivers }: Props) {
         </ResponsiveContainer>
       </div>
 
-      {/* Hint */}
       <div className="border-t border-zinc-800 bg-black/20 px-5 py-2.5 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-600">
         Click a driver to isolate their line
       </div>
@@ -252,21 +257,25 @@ function DarkTooltip({
   payload,
   label,
   series,
-  active_id,
-}: TooltipProps<number, string> & {
-  series?: Array<{ driverId: string; familyName: string; color: string }>;
-  active_id?: string | null;
+  activeId,
+}: ChartTooltipProps & {
+  series: SeriesItem[];
+  activeId: string | null;
 }) {
   if (!active || !payload || payload.length === 0) return null;
 
   const raceName = payload[0]?.payload?.raceName as string | undefined;
+  const validIds = new Set(series.map((s) => s.driverId));
 
-  // Only show real driver series, and honour the isolate selection.
-  const validIds = new Set(series?.map((s) => s.driverId) ?? []);
   const entries = payload
-    .filter((p) => validIds.has(p.dataKey as string))
-    .filter((p) => (active_id ? p.dataKey === active_id : true))
-    .sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0));
+    .filter((p: TooltipEntry) => validIds.has(String(p.dataKey)))
+    .filter((p: TooltipEntry) =>
+      activeId ? String(p.dataKey) === activeId : true
+    )
+    .sort(
+      (a: TooltipEntry, b: TooltipEntry) =>
+        Number(b.value ?? 0) - Number(a.value ?? 0)
+    );
 
   if (entries.length === 0) return null;
 
@@ -283,12 +292,12 @@ function DarkTooltip({
         </div>
       )}
       <div className="space-y-1">
-        {entries.map((entry, idx) => {
+        {entries.map((entry: TooltipEntry, idx: number) => {
           const value = Number(entry.value ?? 0);
           const gap = leader - value;
           return (
             <div
-              key={entry.dataKey as string}
+              key={String(entry.dataKey)}
               className="flex items-center justify-between gap-5 text-xs"
             >
               <span

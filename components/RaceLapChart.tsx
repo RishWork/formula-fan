@@ -9,7 +9,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  TooltipProps,
 } from "recharts";
 import { LapDriver, LapRow } from "@/lib/jolpica";
 import { getTeamColor } from "@/lib/teamColors";
@@ -22,6 +21,32 @@ type Props = {
 };
 
 type Mode = "position" | "time";
+
+// Recharts injects these into whatever we pass as `content`. We define the
+// shape ourselves rather than importing TooltipProps, which omits them.
+type TooltipEntry = {
+  dataKey?: string | number;
+  name?: string;
+  value?: number | string;
+  color?: string;
+  payload?: Record<string, unknown>;
+};
+
+type ChartTooltipProps = {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  label?: string | number;
+};
+
+type SeriesItem = {
+  driverId: string;
+  code: string;
+  familyName: string;
+  constructorId: string;
+  finalPosition: number;
+  color: string;
+  dashed: boolean;
+};
 
 export default function RaceLapChart({
   positionRows,
@@ -57,21 +82,21 @@ export default function RaceLapChart({
 
   // Team-mates share a colour, so the second driver from a team gets a dashed line.
   const seenTeams = new Set<string>();
-  const series = drivers.map((d) => {
+  const series: SeriesItem[] = drivers.map((d) => {
     const isSecond = seenTeams.has(d.constructorId);
     seenTeams.add(d.constructorId);
     return { ...d, color: getTeamColor(d.constructorId), dashed: isSecond };
   });
 
-  // Lap-time axis: anchor on the fastest lap and allow ~8% above it. Pit and
-  // safety-car laps sit well outside that and get clipped, which is what makes
-  // the racing pace legible.
+  // Anchor the lap-time axis near the fastest lap. Pit and safety-car laps fall
+  // outside this range and get clipped, which keeps the racing pace readable.
   const timeMin = fastestLapSeconds - 0.4;
   const timeMax = fastestLapSeconds * 1.08;
 
+  const positionTicks = [1, 5, 10, 15, 20].filter((t) => t <= series.length);
+
   return (
     <div className="overflow-hidden rounded-lg border border-zinc-800 bg-[#14141a] shadow-2xl shadow-black/50">
-      {/* Mode toggle */}
       <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
         <div className="flex gap-1">
           <ModeButton
@@ -95,7 +120,6 @@ export default function RaceLapChart({
         )}
       </div>
 
-      {/* Driver chips */}
       <div className="flex flex-wrap gap-1.5 border-b border-zinc-800 px-5 py-4">
         {series.map((s) => {
           const lit = isLit(s.driverId);
@@ -121,7 +145,6 @@ export default function RaceLapChart({
         })}
       </div>
 
-      {/* Chart */}
       <div className="h-[440px] w-full px-2 py-5">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
@@ -156,7 +179,7 @@ export default function RaceLapChart({
               <YAxis
                 reversed
                 domain={[1, series.length]}
-                ticks={[1, 5, 10, 15, 20].filter((t) => t <= series.length)}
+                ticks={positionTicks}
                 allowDecimals={false}
                 stroke="#52525b"
                 tick={{
@@ -199,7 +222,9 @@ export default function RaceLapChart({
                 dataKey={s.driverId}
                 name={s.code || s.familyName}
                 stroke={s.color}
-                strokeWidth={isLit(s.driverId) && (hovered || hasSelection) ? 3 : 1.75}
+                strokeWidth={
+                  isLit(s.driverId) && (hovered || hasSelection) ? 3 : 1.75
+                }
                 strokeOpacity={opacityFor(s.driverId)}
                 strokeDasharray={s.dashed ? "5 4" : undefined}
                 strokeLinecap="round"
@@ -239,9 +264,7 @@ function ModeButton({
     <button
       onClick={onClick}
       className={`rounded-sm px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.2em] transition-colors ${
-        isActive
-          ? "bg-white/5 text-white"
-          : "text-zinc-500 hover:text-zinc-300"
+        isActive ? "bg-white/5 text-white" : "text-zinc-500 hover:text-zinc-300"
       }`}
       style={isActive ? { borderBottom: "2px solid #e10600" } : undefined}
     >
@@ -263,19 +286,23 @@ function LapTooltip({
   mode,
   series,
   lit,
-}: TooltipProps<number, string> & {
+}: ChartTooltipProps & {
   mode: Mode;
-  series?: Array<{ driverId: string; code: string; color: string }>;
+  series: SeriesItem[];
   lit: (id: string) => boolean;
 }) {
   if (!active || !payload || payload.length === 0) return null;
 
-  const validIds = new Set(series?.map((s) => s.driverId) ?? []);
+  const validIds = new Set(series.map((s) => s.driverId));
+
   const entries = payload
-    .filter((p) => validIds.has(p.dataKey as string))
-    .filter((p) => p.value !== null && p.value !== undefined)
-    .filter((p) => lit(p.dataKey as string))
-    .sort((a, b) => Number(a.value ?? 0) - Number(b.value ?? 0))
+    .filter((p: TooltipEntry) => validIds.has(String(p.dataKey)))
+    .filter((p: TooltipEntry) => p.value !== null && p.value !== undefined)
+    .filter((p: TooltipEntry) => lit(String(p.dataKey)))
+    .sort(
+      (a: TooltipEntry, b: TooltipEntry) =>
+        Number(a.value ?? 0) - Number(b.value ?? 0)
+    )
     .slice(0, 12);
 
   if (entries.length === 0) return null;
@@ -286,9 +313,9 @@ function LapTooltip({
         Lap {label}
       </div>
       <div className="space-y-1">
-        {entries.map((entry) => (
+        {entries.map((entry: TooltipEntry) => (
           <div
-            key={entry.dataKey as string}
+            key={String(entry.dataKey)}
             className="flex items-center justify-between gap-5 text-xs"
           >
             <span
